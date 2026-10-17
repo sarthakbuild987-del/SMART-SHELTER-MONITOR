@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shelter Occupancy Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--bg:#eef1f4;--ink:#14202b;--mute:#5b6b7a;--card:#fff;--line:#d5dce3;
+--ok:#1f8a4c;--warn:#d98a00;--full:#c62828;--okbg:#e3f4ea;--warnbg:#fdf0d5;--fullbg:#fbe3e3}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible",Arial,sans-serif;line-height:1.5}
+header{background:#14202b;color:#fff;padding:20px 5vw}
+header h1{margin:0;font-size:1.4rem}
+header p{margin:4px 0 0;color:#b8c4cf;font-size:.95rem}
+main{max-width:1000px;margin:0 auto;padding:24px 5vw 48px}
+.summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.summary div{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 18px;min-width:140px}
+.summary b{display:block;font-size:1.8rem;line-height:1.1}
+.summary span{color:var(--mute);font-size:.9rem}
+#banner{margin-bottom:16px;padding:10px 14px;border-radius:8px;background:var(--warnbg);font-size:.95rem}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.shelter{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px}
+.shelter h2{margin:0 0 2px;font-size:1.1rem}
+.updated{color:var(--mute);font-size:.85rem;margin:0 0 12px}
+.count{font-size:2.6rem;font-weight:700;line-height:1}
+.count small{font-size:1rem;font-weight:400;color:var(--mute)}
+.bar{height:12px;background:var(--line);border-radius:6px;margin:12px 0;overflow:hidden}
+.bar i{display:block;height:100%;transition:width .4s}
+.badge{display:inline-block;padding:3px 12px;border-radius:14px;font-weight:700;font-size:.9rem}
+.ok .bar i{background:var(--ok)}.ok .badge{background:var(--okbg);color:var(--ok)}
+.warn .bar i{background:var(--warn)}.warn .badge{background:var(--warnbg);color:#8a5a00}
+.full .bar i{background:var(--full)}.full .badge{background:var(--fullbg);color:var(--full)}
+.free{margin:10px 0 0;color:var(--mute);font-size:.95rem}
+.demo{margin-top:12px;display:flex;gap:8px}
+.demo button{flex:1;padding:8px;font:inherit;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer}
+button:focus-visible{outline:3px solid #1a5fb4;outline-offset:2px}
+.mapwrap{margin-bottom:20px}
+#map{height:360px;border-radius:8px;border:1px solid var(--line);z-index:0}
+#nearest{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin-bottom:12px}
+#nearest p{margin:0 0 8px}
+.btn{display:inline-block;padding:9px 16px;font:inherit;font-weight:700;background:#14202b;color:#fff;border:0;border-radius:6px;cursor:pointer;text-decoration:none}
+.btn.alt{background:#1a5fb4}
+.redirect{margin:12px 0 0;padding:10px 12px;background:var(--fullbg);border-radius:6px;font-size:.95rem}
+.redirect a{color:#1a5fb4;font-weight:700}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Shelter Occupancy Dashboard</h1>
+  <p>Live headcount from shelter entrances</p>
+</header>
+<main>
+  <div id="banner" hidden></div>
+  <section class="summary" aria-label="Totals">
+    <div><b id="tShelters">0</b><span>Shelters</span></div>
+    <div><b id="tPeople">0</b><span>People inside</span></div>
+    <div><b id="tFree">0</b><span>Free spaces</span></div>
+  </section>
+  <section class="mapwrap" aria-label="Shelter map">
+    <div id="nearest">
+      <p id="nearestText">Share your location to find the nearest shelter with free space.</p>
+      <button class="btn" id="locBtn">Find nearest shelter</button>
+      <a class="btn alt" id="dirBtn" target="_blank" rel="noopener" hidden>Get directions</a>
+    </div>
+    <div id="map"></div>
+  </section>
+  <section id="grid" aria-live="polite"></section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+// 1. Paste your Firebase web config here (Project settings > Your apps > Web app).
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT"
+};
+
+const DEMO = firebaseConfig.apiKey === "YOUR_API_KEY";
+let shelters = {};
+
+
+function statusOf(count, cap){
+  const p = cap ? count / cap : 0;
+  if (p >= 1) return {cls:"full", label:"Full"};
+  if (p >= 0.8) return {cls:"warn", label:"Nearly full"};
+  return {cls:"ok", label:"Space available"};
+}
+
+function ago(ts){
+  if (!ts) return "No update yet";
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return "Updated " + s + " s ago";
+  if (s < 3600) return "Updated " + Math.round(s / 60) + " min ago";
+  return "Updated " + Math.round(s / 3600) + " h ago";
+}
+
+function esc(t){return String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function km(a,b,c,d){const r=x=>x*Math.PI/180,R=6371,dl=r(c-a),dn=r(d-b);
+  const h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+function dirUrl(oLat,oLng,dLat,dLng){return "https://www.google.com/maps/dir/?api=1&origin="+oLat+","+oLng+"&destination="+dLat+","+dLng+"&travelmode=driving"}
+function nearestFree(lat,lng,skipId){
+  let best=null;
+  Object.keys(shelters).forEach(id=>{
+    const s=shelters[id];
+    if(id===skipId||s.lat==null||s.lng==null)return;
+    if((Number(s.count)||0)>=(Number(s.capacity)||0))return;
+    const d=km(lat,lng,Number(s.lat),Number(s.lng));
+    if(!best||d<best.d)best={id,s,d};
+  });
+  return best;
+}
+let map,layer,userPos=null,userMarker=null,fitted=false;
+function initMap(){
+  map=L.map("map").setView([20.59,78.96],5);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
+  layer=L.layerGroup().addTo(map);
+}
+function updateMap(){
+  layer.clearLayers();
+  const pts=[];
+  Object.keys(shelters).forEach(id=>{
+    const s=shelters[id];
+    if(s.lat==null||s.lng==null)return;
+    const st=statusOf(Number(s.count)||0,Number(s.capacity)||0);
+    const col={ok:"#1f8a4c",warn:"#d98a00",full:"#c62828"}[st.cls];
+    L.circleMarker([s.lat,s.lng],{radius:11,color:"#fff",weight:2,fillColor:col,fillOpacity:1}).addTo(layer)
+      .bindPopup("<b>"+esc(s.name||id)+"</b><br>"+(Number(s.count)||0)+" / "+(Number(s.capacity)||0)+" people<br>"+st.label);
+    pts.push([s.lat,s.lng]);
+  });
+  if(userPos)pts.push([userPos.lat,userPos.lng]);
+  if(pts.length&&!fitted){map.fitBounds(pts,{padding:[40,40],maxZoom:15});fitted=true}
+}
+function showNearest(){
+  const t=document.getElementById("nearestText"),a=document.getElementById("dirBtn");
+  if(!userPos)return;
+  const n=nearestFree(userPos.lat,userPos.lng,null);
+  if(!n){t.textContent="No shelter with free space was found.";a.hidden=true;return}
+  t.innerHTML="Nearest shelter with space: <b>"+esc(n.s.name||n.id)+"</b>, "+n.d.toFixed(1)+" km away ("+Math.max(0,n.s.capacity-n.s.count)+" spaces free).";
+  a.href=dirUrl(userPos.lat,userPos.lng,n.s.lat,n.s.lng);a.hidden=false;
+}
+function locate(){
+  const t=document.getElementById("nearestText");
+  if(!navigator.geolocation){t.textContent="This browser cannot share your location.";return}
+  t.textContent="Finding your location...";
+  navigator.geolocation.getCurrentPosition(p=>{
+    userPos={lat:p.coords.latitude,lng:p.coords.longitude};
+    if(userMarker)map.removeLayer(userMarker);
+    userMarker=L.circleMarker([userPos.lat,userPos.lng],{radius:8,color:"#fff",weight:2,fillColor:"#1a5fb4",fillOpacity:1}).addTo(map).bindPopup("You are here");
+    fitted=false;updateMap();showNearest();
+  },()=>{t.textContent="Location was blocked. Allow location access in your browser and try again."},{enableHighAccuracy:true,timeout:15000});
+}
+function redirectHtml(id,st){
+  const s=shelters[id];
+  if(st.cls!=="full"||s.lat==null)return "";
+  const n=nearestFree(Number(s.lat),Number(s.lng),id);
+  if(!n)return "<p class='redirect'>This shelter is full. No other shelter with space was found.</p>";
+  return "<p class='redirect'>This shelter is full. Go to <b>"+esc(n.s.name||n.id)+"</b> ("+n.d.toFixed(1)+" km). <a target='_blank' rel='noopener' href='"+dirUrl(s.lat,s.lng,n.s.lat,n.s.lng)+"'>Get directions</a></p>";
+}
+function render(){
+  const grid = document.getElementById("grid");
+  const ids = Object.keys(shelters);
+  let people = 0, free = 0;
+  grid.innerHTML = ids.length ? "" : "<p>No shelters yet. Send data from the ESP32 to /shelters/shelter1.</p>";
+  ids.forEach(id => {
+    const s = shelters[id];
+    const count = Number(s.count) || 0, cap = Number(s.capacity) || 0;
+    const st = statusOf(count, cap);
+    people += count; free += Math.max(0, cap - count);
+    const pct = cap ? Math.min(100, Math.round(count / cap * 100)) : 0;
+    const el = document.createElement("article");
+    el.className = "shelter " + st.cls;
+    el.innerHTML =
+      "<h2></h2><p class='updated'>" + ago(s.updated) + "</p>" +
+      "<div class='count'>" + count + " <small>of " + cap + " people</small></div>" +
+      "<div class='bar' role='progressbar' aria-valuenow='" + pct + "' aria-valuemin='0' aria-valuemax='100'><i style='width:" + pct + "%'></i></div>" +
+      "<span class='badge'>" + st.label + "</span>" +
+      "<p class='free'>" + Math.max(0, cap - count) + " spaces free</p>" +
+      redirectHtml(id, st) +
+      (DEMO ? "<div class='demo'><button data-id='" + id + "' data-d='1'>Person enters</button><button data-id='" + id + "' data-d='-1'>Person leaves</button></div>" : "");
+    el.querySelector("h2").textContent = s.name || id;
+    grid.appendChild(el);
+  });
+  document.getElementById("tShelters").textContent = ids.length;
+  document.getElementById("tPeople").textContent = people;
+  document.getElementById("tFree").textContent = free;
+  updateMap();
+  showNearest();
+}
+
+document.getElementById("locBtn").addEventListener("click", locate);
+initMap();
+if (DEMO){
+  const b = document.getElementById("banner");
+  b.hidden = false;
+  b.textContent = "Demo mode: showing sample data. Add your Firebase config in index.html to show live ESP32 data.";
+  shelters = {
+    shelter1: {name:"Government School Shelter", lat:12.9716, lng:77.5946, count:18, capacity:50, updated:Date.now()},
+    shelter2: {name:"Community Hall", lat:12.9850, lng:77.6100, count:42, capacity:50, updated:Date.now()},
+    shelter3: {name:"Cyclone Centre", lat:12.9600, lng:77.5800, count:60, capacity:60, updated:Date.now()}
+  };
+  document.getElementById("grid").addEventListener("click", e => {
+    const btn = e.target.closest("button[data-id]");
+    if (!btn) return;
+    const s = shelters[btn.dataset.id];
+    s.count = Math.max(0, s.count + Number(btn.dataset.d));
+    s.updated = Date.now();
+    render();
+  });
+  render();
+} else {
+  firebase.initializeApp(firebaseConfig);
+  firebase.database().ref("shelters").on("value", snap => {
+    shelters = snap.val() || {};
+    render();
+  }, err => {
+    const b = document.getElementById("banner");
+    b.hidden = false;
+    b.textContent = "Cannot read data: " + err.message;
+  });
+}
+setInterval(render, 15000);
+</script>
+</body>
+</html>
