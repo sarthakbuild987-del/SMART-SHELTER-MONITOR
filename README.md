@@ -36,4 +36,4 @@ An IoT system that counts people entering and leaving a shelter, uploads the cou
 - ADARSH KUMAR OJHA (20261CSD160)
 - DIVYANSH PATEL (20261CSD0161)
 - AKSHAY BS (20261CSD0163)
-- TEJESH B (20261ADS0217)
+- TEJESH S (20261ADS0217)
