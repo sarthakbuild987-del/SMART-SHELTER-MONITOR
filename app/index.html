@@ -42,8 +42,13 @@ button:focus-visible{outline:3px solid #1a5fb4;outline-offset:2px}
 #map{height:360px;border-radius:8px;border:1px solid var(--line);z-index:0}
 #nearest{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin-bottom:12px}
 #nearest p{margin:0 0 8px}
-.btn{display:inline-block;padding:9px 16px;font:inherit;font-weight:700;background:#14202b;color:#fff;border:0;border-radius:6px;cursor:pointer;text-decoration:none}
 [hidden]{display:none!important}
+#alert{margin-bottom:16px;padding:12px 16px;border-radius:8px;background:var(--fullbg);color:#7a1212;font-weight:700}
+.hint{color:var(--mute);font-size:.9rem;margin:0 0 10px}
+.shelter{cursor:pointer}
+.badge.fire{background:var(--full)!important;color:#fff!important;margin-left:6px}
+.stale{color:var(--full)}
+.btn{display:inline-block;padding:9px 16px;font:inherit;font-weight:700;background:#14202b;color:#fff;border:0;border-radius:6px;cursor:pointer;text-decoration:none}
 .btn.alt{background:#1a5fb4}
 .redirect{margin:12px 0 0;padding:10px 12px;background:var(--fullbg);border-radius:6px;font-size:.95rem}
 .redirect a{color:#1a5fb4;font-weight:700}
@@ -57,6 +62,7 @@ button:focus-visible{outline:3px solid #1a5fb4;outline-offset:2px}
 </header>
 <main>
   <div id="banner" hidden></div>
+  <div id="alert" role="alert" hidden></div>
   <section class="summary" aria-label="Totals">
     <div><b id="tShelters">0</b><span>Shelters</span></div>
     <div><b id="tPeople">0</b><span>People inside</span></div>
@@ -70,20 +76,17 @@ button:focus-visible{outline:3px solid #1a5fb4;outline-offset:2px}
     </div>
     <div id="map"></div>
   </section>
+  <p class="hint">Tap a shelter to see it on the map.</p>
   <section id="grid" aria-live="polite"></section>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="config.js"></script>
 <script>
-// 1. Paste your Firebase web config here (Project settings > Your apps > Web app).
-const firebaseConfig = {
-  apiKey: "AIzaSyA-EeUPLYB1k-S_HsFoapiYzVWcFBA4OUo",
-  authDomain: "smart-shelter-monitor.firebaseapp.com",
-  databaseURL: "https://smart-shelter-monitor-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "smart-shelter-monitor"
-};
+// Firebase settings live in config.js
+const firebaseConfig = window.firebaseConfig || {apiKey:"YOUR_API_KEY"};
 
 const DEMO = firebaseConfig.apiKey === "YOUR_API_KEY";
 let shelters = {};
@@ -119,24 +122,26 @@ function nearestFree(lat,lng,skipId){
   });
   return best;
 }
-let map,layer,userPos=null,userMarker=null,fitted=false;
+let map,layer,userPos=null,userMarker=null,fitted=false,markers={};
 function initMap(){
   map=L.map("map").setView([20.59,78.96],5);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
   layer=L.layerGroup().addTo(map);
 }
 function updateMap(){
-  layer.clearLayers();
+  let reopen=null;for(const k in markers){if(markers[k].isPopupOpen())reopen=k}
+  layer.clearLayers();markers={};
   const pts=[];
   Object.keys(shelters).forEach(id=>{
     const s=shelters[id];
     if(s.lat==null||s.lng==null)return;
     const st=statusOf(Number(s.count)||0,Number(s.capacity)||0);
     const col={ok:"#1f8a4c",warn:"#d98a00",full:"#c62828"}[st.cls];
-    L.circleMarker([s.lat,s.lng],{radius:11,color:"#fff",weight:2,fillColor:col,fillOpacity:1}).addTo(layer)
+    markers[id]=L.circleMarker([s.lat,s.lng],{radius:11,color:"#fff",weight:2,fillColor:col,fillOpacity:1}).addTo(layer)
       .bindPopup("<b>"+esc(s.name||id)+"</b><br>"+(Number(s.count)||0)+" / "+(Number(s.capacity)||0)+" people<br>"+st.label);
     pts.push([s.lat,s.lng]);
   });
+  if(reopen&&markers[reopen])markers[reopen].openPopup();
   if(userPos)pts.push([userPos.lat,userPos.lng]);
   if(pts.length&&!fitted){map.fitBounds(pts,{padding:[40,40],maxZoom:15});fitted=true}
 }
@@ -166,6 +171,16 @@ function redirectHtml(id,st){
   if(!n)return "<p class='redirect'>This shelter is full. No other shelter with space was found.</p>";
   return "<p class='redirect'>This shelter is full. Go to <b>"+esc(n.s.name||n.id)+"</b> ("+n.d.toFixed(1)+" km). <a target='_blank' rel='noopener' href='"+dirUrl(s.lat,s.lng,n.s.lat,n.s.lng)+"'>Get directions</a></p>";
 }
+function staleTag(s){
+  if(DEMO||!s.updated)return "";
+  return Date.now()-s.updated>120000?" · <b class='stale'>sensor may be offline</b>":"";
+}
+function sensorHtml(s){
+  const p=[];
+  if(s.temp!=null)p.push(Number(s.temp).toFixed(1)+" °C");
+  if(s.humidity!=null)p.push(Math.round(s.humidity)+"% humidity");
+  return p.length?"<p class='free'>"+p.join(" · ")+"</p>":"";
+}
 function render(){
   const grid = document.getElementById("grid");
   const ids = Object.keys(shelters);
@@ -179,17 +194,24 @@ function render(){
     const pct = cap ? Math.min(100, Math.round(count / cap * 100)) : 0;
     const el = document.createElement("article");
     el.className = "shelter " + st.cls;
+    el.dataset.id = id;
     el.innerHTML =
-      "<h2></h2><p class='updated'>" + ago(s.updated) + "</p>" +
+      "<h2></h2><p class='updated'>" + ago(s.updated) + staleTag(s) + "</p>" +
       "<div class='count'>" + count + " <small>of " + cap + " people</small></div>" +
       "<div class='bar' role='progressbar' aria-valuenow='" + pct + "' aria-valuemin='0' aria-valuemax='100'><i style='width:" + pct + "%'></i></div>" +
-      "<span class='badge'>" + st.label + "</span>" +
+      "<span class='badge'>" + st.label + "</span>" + (s.flame === true ? "<span class='badge fire'>FIRE</span>" : "") +
       "<p class='free'>" + Math.max(0, cap - count) + " spaces free</p>" +
-      redirectHtml(id, st) +
+      sensorHtml(s) + redirectHtml(id, st) +
       (DEMO ? "<div class='demo'><button data-id='" + id + "' data-d='1'>Person enters</button><button data-id='" + id + "' data-d='-1'>Person leaves</button></div>" : "");
     el.querySelector("h2").textContent = s.name || id;
     grid.appendChild(el);
   });
+  const msgs=[];
+  ids.forEach(id=>{const x=shelters[id],n=x.name||id,cp=Number(x.capacity)||0;
+    if(x.flame===true)msgs.push("Fire detected at "+n);
+    else if(cp>0&&(Number(x.count)||0)>=cp)msgs.push(n+" is full");});
+  const al=document.getElementById("alert");
+  al.hidden=!msgs.length;al.textContent=msgs.join(" · ");
   document.getElementById("tShelters").textContent = ids.length;
   document.getElementById("tPeople").textContent = people;
   document.getElementById("tFree").textContent = free;
@@ -197,6 +219,13 @@ function render(){
   showNearest();
 }
 
+document.getElementById("grid").addEventListener("click",e=>{
+  if(e.target.closest("button,a"))return;
+  const c=e.target.closest(".shelter");if(!c)return;
+  const m=markers[c.dataset.id];if(!m)return;
+  document.getElementById("map").scrollIntoView({behavior:"smooth",block:"center"});
+  map.flyTo(m.getLatLng(),15);m.openPopup();
+});
 document.getElementById("locBtn").addEventListener("click", locate);
 initMap();
 if (DEMO){
@@ -204,9 +233,9 @@ if (DEMO){
   b.hidden = false;
   b.textContent = "Demo mode: showing sample data. Add your Firebase config in index.html to show live ESP32 data.";
   shelters = {
-    shelter1: {name:"Government School Shelter", lat:12.9716, lng:77.5946, count:18, capacity:50, updated:Date.now()},
-    shelter2: {name:"Community Hall", lat:12.9850, lng:77.6100, count:42, capacity:50, updated:Date.now()},
-    shelter3: {name:"Cyclone Centre", lat:12.9600, lng:77.5800, count:60, capacity:60, updated:Date.now()}
+    shelter1: {name:"Government School Shelter", lat:12.9716, lng:77.5946, count:18, capacity:50, temp:29.5, humidity:62, updated:Date.now()},
+    shelter2: {name:"Community Hall", lat:12.9850, lng:77.6100, count:42, capacity:50, temp:31.2, humidity:58, updated:Date.now()},
+    shelter3: {name:"Cyclone Centre", lat:12.9600, lng:77.5800, count:60, capacity:60, temp:30.1, humidity:65, updated:Date.now()}
   };
   document.getElementById("grid").addEventListener("click", e => {
     const btn = e.target.closest("button[data-id]");
