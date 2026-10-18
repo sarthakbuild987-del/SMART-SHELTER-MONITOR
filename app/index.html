@@ -115,7 +115,7 @@ function nearestFree(lat,lng,skipId){
   let best=null;
   Object.keys(shelters).forEach(id=>{
     const s=shelters[id];
-    if(id===skipId||s.lat==null||s.lng==null)return;
+    if(id===skipId||s.lat==null||s.lng==null||s.flame===true)return;
     if((Number(s.count)||0)>=(Number(s.capacity)||0))return;
     const d=km(lat,lng,Number(s.lat),Number(s.lng));
     if(!best||d<best.d)best={id,s,d};
