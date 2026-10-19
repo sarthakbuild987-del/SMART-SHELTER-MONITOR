@@ -26,9 +26,14 @@ An IoT system that counts people entering and leaving a shelter, uploads the cou
 - `app/`: dashboard / PWA files
 - `docs/`: reports, slides, diagrams
 
+## Links
+- Live dashboard: https://smart-shelter-monitor.vercel.app
+- ESP32 simulation (Wokwi): https://wokwi.com/projects/478236280340982785
+- Credentials are removed from the Wokwi project. Supply your own in `secrets.h`.
+
 ## Project status
 - [x] Phase 1: Roadmap
-- [ ] Phase 2: 50% (counting, cloud upload, basic dashboard)
+- [x] Phase 2: 50% (counting, cloud upload, basic dashboard)
 - [ ] Phase 3: 100% (alerts, multi-shelter view, app, battery backup)
 
 ## Team
