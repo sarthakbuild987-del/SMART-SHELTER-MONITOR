@@ -24,7 +24,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <DHT.h>
-#include "secrets.h"   // WIFI_SSID, WIFI_PASS, DB_URL
+#include "secrets.h"   // WIFI_SSID, WIFI_PASS, DB_URL, FIREBASE_API_KEY, DEVICE_EMAIL, DEVICE_PASS
 
 // ---------- Settings ----------
 const char* SHELTER_ID = "shelter1";   // must match the key in Firebase
@@ -44,7 +44,8 @@ const int   CAPACITY   = 50;
 const int FLAME_THRESHOLD = 1500;
 
 // ---------- Timing ----------
-const unsigned long PAIR_TIMEOUT_MS   = 1500;   // time allowed between the two sensors
+// 5000 is easy for mouse clicks in Wokwi. Use about 1500 on a real doorway.
+const unsigned long PAIR_TIMEOUT_MS   = 5000;   // time allowed between the two sensors
 const unsigned long CLEAR_MS          = 250;    // both sensors must be free this long
 const unsigned long HEARTBEAT_MS      = 30000;
 const unsigned long MIN_UPLOAD_GAP_MS = 1500;
@@ -61,6 +62,10 @@ volatile float temperature = NAN;
 volatile float humidity = NAN;
 volatile bool  wifiOk = false;
 volatile bool  lastUploadOk = false;
+
+// Firebase login token (used only by the upload task)
+String idToken = "";
+unsigned long tokenAt = 0;
 
 // ---------- Buzzer (non-blocking) ----------
 int beepsLeft = 0;
@@ -124,29 +129,66 @@ void runCounter() {
   }
 }
 
-// ---------- Firebase upload (REST) ----------
+// ---------- Firebase login + upload (REST) ----------
+// The device signs in with its own account. The database rules only let
+// this account write count, temp, humidity, flame and updated.
+bool signIn() {
+  WiFiClientSecure client;
+  client.setInsecure();   // fine for a prototype; use a certificate in production
+  HTTPClient http;
+  http.setConnectTimeout(20000);
+  http.setTimeout(20000);
+  String url = String("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=") + FIREBASE_API_KEY;
+  if (!http.begin(client, url)) return false;
+  http.addHeader("Content-Type", "application/json");
+  String body = String("{\"email\":\"") + DEVICE_EMAIL + "\",\"password\":\"" + DEVICE_PASS + "\",\"returnSecureToken\":true}";
+  int code = http.POST(body);
+  String resp = http.getString();
+  http.end();
+  if (code != 200) { Serial.printf("Sign-in failed: HTTP %d\n", code); Serial.println(resp); return false; }
+
+  int k = resp.indexOf("\"idToken\"");
+  if (k < 0) return false;
+  int a = resp.indexOf('"', resp.indexOf(':', k) + 1) + 1;
+  int b = resp.indexOf('"', a);
+  if (a <= 0 || b <= a) return false;
+  idToken = resp.substring(a, b);
+  tokenAt = millis();
+  Serial.println("Signed in to Firebase");
+  return true;
+}
+
 bool sendToFirebase() {
+  // Tokens last 1 hour; sign in again after 45 minutes
+  if (idToken.length() == 0 || millis() - tokenAt > 2700000UL) {
+        if (!signIn()) return false;
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+  }
+
   int c = count;
   bool f = fire;
   float t = temperature, h = humidity;
 
   char body[240];
   int n = snprintf(body, sizeof(body),
-    "{\"count\":%d,\"capacity\":%d,\"flame\":%s,\"updated\":{\".sv\":\"timestamp\"}",
-    c, CAPACITY, f ? "true" : "false");
+    "{\"count\":%d,\"flame\":%s,\"updated\":{\".sv\":\"timestamp\"}",
+    c, f ? "true" : "false");
   if (!isnan(t)) n += snprintf(body + n, sizeof(body) - n, ",\"temp\":%.1f", t);
   if (!isnan(h)) n += snprintf(body + n, sizeof(body) - n, ",\"humidity\":%.1f", h);
   snprintf(body + n, sizeof(body) - n, "}");
 
   WiFiClientSecure client;
-  client.setInsecure();   // fine for a prototype; use a certificate in production
+  client.setInsecure();
   HTTPClient http;
-  String url = String(DB_URL) + "/shelters/" + SHELTER_ID + ".json";
+  http.setConnectTimeout(20000);
+  http.setTimeout(20000);
+  String url = String(DB_URL) + "/shelters/" + SHELTER_ID + ".json?auth=" + idToken;
   if (!http.begin(client, url)) return false;
   http.addHeader("Content-Type", "application/json");
   int code = http.PATCH(body);
   http.end();
   Serial.printf("Upload -> HTTP %d\n", code);
+  if (code == 401) idToken = "";   // token rejected: sign in again next time
   return code == 200;
 }
 
@@ -166,7 +208,7 @@ void uploadTask(void*) {
       dirty = false;                    // cleared first, so changes during upload are not lost
       bool ok = sendToFirebase();
       lastUploadOk = ok;
-      if (!ok) dirty = true;            // retry
+      if (!ok) { dirty = true; vTaskDelay(8000 / portTICK_PERIOD_MS); }   // retry after a pause
       lastSend = millis();
     }
     vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -231,8 +273,10 @@ void setup() {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) delay(250);
   Serial.println(WiFi.status() == WL_CONNECTED ? "WiFi connected" : "WiFi not connected (will keep trying)");
+  
 
-  xTaskCreatePinnedToCore(uploadTask, "upload", 8192, NULL, 1, NULL, 0);
+
+  xTaskCreatePinnedToCore(uploadTask, "upload", 16384, NULL, 1, NULL, 1);
 }
 
 void loop() {
