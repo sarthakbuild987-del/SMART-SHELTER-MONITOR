@@ -42,6 +42,8 @@ button:focus-visible{outline:3px solid #1a5fb4;outline-offset:2px}
 #map{height:360px;border-radius:8px;border:1px solid var(--line);z-index:0}
 #nearest{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin-bottom:12px}
 #nearest p{margin:0 0 8px}
+.bc{margin-bottom:14px;padding:12px 14px;border-radius:10px;font-weight:600}
+.bc.critical{background:var(--fullbg);color:#7a1212}.bc.warning{background:var(--warnbg);color:#6b4500}.bc.info{background:#e3eefb;color:#0d3b78}
 [hidden]{display:none!important}
 #alert{margin-bottom:16px;padding:12px 16px;border-radius:8px;background:var(--fullbg);color:#7a1212;font-weight:700}
 .hint{color:var(--mute);font-size:.9rem;margin:0 0 10px}
@@ -62,6 +64,7 @@ button:focus-visible{outline:3px solid #1a5fb4;outline-offset:2px}
 </header>
 <main>
   <div id="banner" hidden></div>
+  <div id="alerts" role="alert"></div>
   <div id="alert" role="alert" hidden></div>
   <section class="summary" aria-label="Totals">
     <div><b id="tShelters">0</b><span>Shelters</span></div>
@@ -248,6 +251,10 @@ if (DEMO){
   render();
 } else {
   firebase.initializeApp(firebaseConfig);
+  firebase.database().ref("alerts").on("value", s => {
+    const items = Object.values(s.val() || {}).filter(a => a.active === true).sort((x, y) => (y.created || 0) - (x.created || 0));
+    document.getElementById("alerts").innerHTML = items.map(a => "<div class='bc " + esc(a.severity) + "'><b>" + esc(a.title) + "</b>" + (a.message ? "<br>" + esc(a.message) : "") + "</div>").join("");
+  }, () => {});
   firebase.database().ref("shelters").on("value", snap => {
     shelters = snap.val() || {};
     render();

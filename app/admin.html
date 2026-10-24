@@ -22,6 +22,8 @@ input[type=email],input[type=password]{width:100%;padding:10px;font:inherit;bord
 .s-new{background:var(--full)}.s-seen{background:var(--warn)}.s-on_the_way{background:var(--blue)}.s-resolved{background:var(--ok)}
 .mute{color:var(--mute);font-size:.92rem;margin:2px 0}
 .msg{color:var(--full)}
+#alertCard input,#alertCard textarea,#alertCard select{width:100%;padding:10px;font:inherit;border:1px solid var(--line);border-radius:6px}
+.a-info{background:var(--blue)}.a-warning{background:var(--warn)}.a-critical{background:var(--full)}
 [hidden]{display:none!important}
 button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
 </style>
@@ -38,6 +40,17 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(-
   </section>
   <section id="main" hidden>
     <p class="msg" id="denied" hidden>This account is not an admin. Ask the project owner to add your user ID under <b>admins</b>.</p>
+    <div class="card" id="alertCard">
+      <h2>Post an emergency alert</h2>
+      <p class="mute">Shown to every user on the app home screen and on the public dashboard.</p>
+      <label for="aTitle">Title</label><input id="aTitle" maxlength="100">
+      <label for="aMsg">Message</label><textarea id="aMsg" rows="3" maxlength="500"></textarea>
+      <label for="aSev">Severity</label>
+      <select id="aSev"><option value="info">Information</option><option value="warning">Warning</option><option value="critical">Critical</option></select>
+      <div class="row"><button class="btn" id="aPost">Post alert</button></div>
+      <p class="msg" id="aOut" role="alert"></p>
+      <h3>Active alerts</h3><div id="aList" class="mute">None</div>
+    </div>
     <label><input type="checkbox" id="showDone"> Show resolved requests</label>
     <div id="list"></div>
   </section>
@@ -51,7 +64,7 @@ const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const cfg = window.firebaseConfig;
 const labels = { "new": "New", seen: "Seen", on_the_way: "On the way", resolved: "Resolved" };
-let data = [], ref = null;
+let data = [], ref = null, alerts = {}, alertRef = null;
 if (!cfg || cfg.apiKey === "YOUR_API_KEY") {
   $("authMsg").textContent = "Add your Firebase apiKey to config.js first.";
 } else {
@@ -62,14 +75,28 @@ if (!cfg || cfg.apiKey === "YOUR_API_KEY") {
   $("gBtn").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(fail);
   $("outBtn").onclick = () => auth.signOut();
   $("showDone").onchange = render;
+  $("aPost").onclick = () => {
+    const t = $("aTitle").value.trim(), o = $("aOut");
+    if (!t) { o.textContent = "Please enter a title."; return; }
+    db.ref("alerts").push({ title: t, message: $("aMsg").value.trim(), severity: $("aSev").value, active: true, created: firebase.database.ServerValue.TIMESTAMP })
+      .then(() => { o.textContent = ""; $("aTitle").value = ""; $("aMsg").value = ""; })
+      .catch(e => { o.textContent = "Could not post: " + e.message; });
+  };
+  $("aList").addEventListener("click", e => {
+    const b = e.target.closest("button[data-off]"); if (!b) return;
+    db.ref("alerts/" + b.dataset.off).update({ active: false, updated: firebase.database.ServerValue.TIMESTAMP });
+  });
 
   auth.onAuthStateChanged(u => {
     $("auth").hidden = !!u; $("main").hidden = !u; $("outBtn").hidden = !u;
     if (ref) { ref.off(); ref = null; }
+    if (alertRef) { alertRef.off(); alertRef = null; }
     if (!u) return;
+    alertRef = db.ref("alerts");
+    alertRef.on("value", s => { alerts = s.val() || {}; renderAlerts(); }, () => {});
     ref = db.ref("requests").orderByChild("created");
-    ref.on("value", s => { $("denied").hidden = true; data = []; s.forEach(c => { data.push([c.key, c.val()]); }); render(); },
-      () => { $("denied").hidden = false; data = []; render(); });
+    ref.on("value", s => { $("denied").hidden = true; $("alertCard").hidden = false; data = []; s.forEach(c => { data.push([c.key, c.val()]); }); render(); },
+      () => { $("denied").hidden = false; $("alertCard").hidden = true; data = []; render(); });
   });
 
   $("list").addEventListener("click", e => {
@@ -77,6 +104,11 @@ if (!cfg || cfg.apiKey === "YOUR_API_KEY") {
     db.ref("requests/" + b.dataset.id).update({ status: b.dataset.s, updated: firebase.database.ServerValue.TIMESTAMP })
       .catch(err => alert("Could not update: " + err.message));
   });
+}
+
+function renderAlerts() {
+  const items = Object.entries(alerts).filter(([, a]) => a.active === true).sort((x, y) => (y[1].created || 0) - (x[1].created || 0));
+  $("aList").innerHTML = items.length ? items.map(([id, a]) => "<p><span class='badge a-" + esc(a.severity) + "'>" + esc(a.severity) + "</span> <b>" + esc(a.title) + "</b> <button class='btn ghost' data-off='" + esc(id) + "'>Deactivate</button></p>").join("") : "None";
 }
 
 function render() {

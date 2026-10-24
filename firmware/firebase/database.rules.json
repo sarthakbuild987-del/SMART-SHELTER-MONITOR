@@ -139,6 +139,34 @@
           ".validate": false
         }
       }
+    },
+    "alerts": {
+      ".read": true,
+      "$id": {
+        ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+        ".validate": "newData.hasChildren(['title','severity','active','created'])",
+        "title": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+        },
+        "message": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "severity": {
+          ".validate": "newData.val() === 'info' || newData.val() === 'warning' || newData.val() === 'critical'"
+        },
+        "active": {
+          ".validate": "newData.isBoolean()"
+        },
+        "created": {
+          ".validate": "newData.isNumber()"
+        },
+        "updated": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

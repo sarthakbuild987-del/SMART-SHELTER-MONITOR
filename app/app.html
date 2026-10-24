@@ -28,6 +28,8 @@ input[type=checkbox]{width:auto;margin-right:8px}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{flex:1;padding:14px 4px;font:inherit;font-weight:600;background:none;border:0;color:var(--mute);cursor:pointer}
 nav button.on{color:var(--blue);border-top:3px solid var(--blue)}
+.bc{margin-bottom:14px;padding:12px 14px;border-radius:10px;font-weight:600}
+.bc.critical{background:var(--fullbg);color:#7a1212}.bc.warning{background:var(--warnbg);color:#6b4500}.bc.info{background:#e3eefb;color:#0d3b78}
 [hidden]{display:none!important}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
 </style>
@@ -50,6 +52,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   </section>
 
   <section id="app" hidden>
+    <div id="alerts" role="alert"></div>
     <div id="alert" role="alert" hidden></div>
 
     <div id="tab-home">
@@ -116,7 +119,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <script>
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let me = null, pos = null, shelters = {}, profile = {}, shelterRef = null, reqRef = null;
+let me = null, pos = null, shelters = {}, profile = {}, shelterRef = null, reqRef = null, alertRef = null;
 
 const cfg = window.firebaseConfig;
 if (!cfg || cfg.apiKey === "YOUR_API_KEY") {
@@ -151,6 +154,7 @@ if (!cfg || cfg.apiKey === "YOUR_API_KEY") {
     $("auth").hidden = !!user; $("app").hidden = !user; $("tabs").hidden = !user; $("outBtn").hidden = !user;
     if (shelterRef) { shelterRef.off(); shelterRef = null; }
     if (reqRef) { reqRef.off(); reqRef = null; }
+    if (alertRef) { alertRef.off(); alertRef = null; $("alerts").innerHTML = ""; }
     if (!user) { profile = {}; return; }
     db.ref("users/" + user.uid + "/profile").once("value").then(s => {
       profile = s.val() || {};
@@ -159,6 +163,8 @@ if (!cfg || cfg.apiKey === "YOUR_API_KEY") {
       if (!profile.name) { showTab("profile"); $("saveMsg").textContent = "Please complete your emergency profile."; }
     });
     watchRequests(user.uid);
+    alertRef = db.ref("alerts");
+    alertRef.on("value", s => renderBroadcasts(s.val() || {}), () => {});
     shelterRef = db.ref("shelters");
     shelterRef.on("value", s => { shelters = s.val() || {}; renderAll(); });
   });
@@ -223,6 +229,11 @@ function fillProfile() {
   $("pCName").value = profile.contactName || ""; $("pCPhone").value = profile.contactPhone || "";
   $("pBlood").value = profile.bloodGroup || ""; $("pCond").value = profile.conditions || "";
   $("pMob").checked = !!profile.mobility;
+}
+
+function renderBroadcasts(all) {
+  const items = Object.values(all).filter(a => a.active === true).sort((x, y) => (y.created || 0) - (x.created || 0));
+  $("alerts").innerHTML = items.map(a => "<div class='bc " + esc(a.severity) + "'><b>" + esc(a.title) + "</b>" + (a.message ? "<br>" + esc(a.message) : "") + "</div>").join("");
 }
 
 // ---- tabs ----
