@@ -1,0 +1,144 @@
+{
+  "rules": {
+    "shelters": {
+      ".read": true,
+      "$id": {
+        ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+        "count": {
+          ".write": "auth != null && root.child('devices').child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000"
+        },
+        "temp": {
+          ".write": "auth != null && root.child('devices').child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && newData.val() > -50 && newData.val() < 150"
+        },
+        "humidity": {
+          ".write": "auth != null && root.child('devices').child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+        },
+        "flame": {
+          ".write": "auth != null && root.child('devices').child(auth.uid).exists()",
+          ".validate": "newData.isBoolean()"
+        },
+        "updated": {
+          ".write": "auth != null && root.child('devices').child(auth.uid).exists()",
+          ".validate": "newData.isNumber()"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length < 100"
+        },
+        "capacity": {
+          ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 10000"
+        },
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).exists())",
+        ".write": "auth != null && auth.uid === $uid",
+        "profile": {
+          ".validate": "newData.hasChildren(['name'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80"
+          },
+          "phone": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
+          },
+          "contactName": {
+            ".validate": "newData.isString() && newData.val().length <= 80"
+          },
+          "contactPhone": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
+          },
+          "bloodGroup": {
+            ".validate": "newData.isString() && newData.val().length <= 5"
+          },
+          "conditions": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
+          },
+          "mobility": {
+            ".validate": "newData.isBoolean()"
+          },
+          "updated": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "requests": {
+      ".indexOn": [
+        "uid",
+        "created"
+      ],
+      ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || (query.orderByChild == 'uid' && query.equalTo === auth.uid))",
+      "$id": {
+        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('admins').child(auth.uid).exists())",
+        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid && newData.child('status').val() === 'new') || root.child('admins').child(auth.uid).exists())",
+        ".validate": "newData.hasChildren(['uid','type','status','created'])",
+        "uid": {
+          ".validate": "newData.isString()"
+        },
+        "type": {
+          ".validate": "newData.val() === 'help' || newData.val() === 'medical' || newData.val() === 'sos'"
+        },
+        "status": {
+          ".validate": "newData.val() === 'new' || newData.val() === 'seen' || newData.val() === 'on_the_way' || newData.val() === 'resolved'"
+        },
+        "message": {
+          ".validate": "newData.isString() && newData.val().length <= 300"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "phone": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "contactName": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "contactPhone": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "bloodGroup": {
+          ".validate": "newData.isString() && newData.val().length <= 5"
+        },
+        "conditions": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "mobility": {
+          ".validate": "newData.isBoolean()"
+        },
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "created": {
+          ".validate": "newData.isNumber()"
+        },
+        "updated": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}
