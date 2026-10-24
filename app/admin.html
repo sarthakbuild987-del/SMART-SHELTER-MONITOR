@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rescue Team Console</title>
+<style>
+:root{--bg:#eef1f4;--ink:#14202b;--mute:#5b6b7a;--card:#fff;--line:#d5dce3;--navy:#14202b;--blue:#1a5fb4;--ok:#1f8a4c;--warn:#d98a00;--full:#c62828}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Arial,sans-serif;line-height:1.5}
+header{background:var(--navy);color:#fff;padding:14px 5vw;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:1.2rem}
+main{max-width:760px;margin:0 auto;padding:16px 5vw 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+label{display:block;margin:10px 0 4px;font-weight:600}
+input[type=email],input[type=password]{width:100%;padding:10px;font:inherit;border:1px solid var(--line);border-radius:6px}
+.btn{display:inline-block;padding:9px 14px;font:inherit;font-weight:700;background:var(--navy);color:#fff;border:0;border-radius:8px;cursor:pointer;text-decoration:none}
+.btn.alt{background:var(--blue)}.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-weight:700;font-size:.82rem;color:#fff}
+.t-sos{background:var(--full)}.t-medical{background:#8e24aa}.t-help{background:var(--warn)}
+.s-new{background:var(--full)}.s-seen{background:var(--warn)}.s-on_the_way{background:var(--blue)}.s-resolved{background:var(--ok)}
+.mute{color:var(--mute);font-size:.92rem;margin:2px 0}
+.msg{color:var(--full)}
+[hidden]{display:none!important}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+</style>
+</head>
+<body>
+<header><h1>Rescue Team Console</h1><button class="btn ghost" id="outBtn" hidden>Sign out</button></header>
+<main>
+  <section id="auth" class="card">
+    <h2>Admin sign in</h2>
+    <label for="email">Email</label><input id="email" type="email" autocomplete="email">
+    <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+    <div class="row"><button class="btn" id="inBtn">Sign in</button><button class="btn alt" id="gBtn">Google</button></div>
+    <p class="msg" id="authMsg" role="alert"></p>
+  </section>
+  <section id="main" hidden>
+    <p class="msg" id="denied" hidden>This account is not an admin. Ask the project owner to add your user ID under <b>admins</b>.</p>
+    <label><input type="checkbox" id="showDone"> Show resolved requests</label>
+    <div id="list"></div>
+  </section>
+</main>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const cfg = window.firebaseConfig;
+const labels = { "new": "New", seen: "Seen", on_the_way: "On the way", resolved: "Resolved" };
+let data = [], ref = null;
+if (!cfg || cfg.apiKey === "YOUR_API_KEY") {
+  $("authMsg").textContent = "Add your Firebase apiKey to config.js first.";
+} else {
+  firebase.initializeApp(cfg);
+  const auth = firebase.auth(), db = firebase.database();
+  const fail = e => { $("authMsg").textContent = e.code === "auth/invalid-credential" ? "Wrong email or password." : e.message; };
+  $("inBtn").onclick = () => auth.signInWithEmailAndPassword($("email").value.trim(), $("pw").value).catch(fail);
+  $("gBtn").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(fail);
+  $("outBtn").onclick = () => auth.signOut();
+  $("showDone").onchange = render;
+
+  auth.onAuthStateChanged(u => {
+    $("auth").hidden = !!u; $("main").hidden = !u; $("outBtn").hidden = !u;
+    if (ref) { ref.off(); ref = null; }
+    if (!u) return;
+    ref = db.ref("requests").orderByChild("created");
+    ref.on("value", s => { $("denied").hidden = true; data = []; s.forEach(c => { data.push([c.key, c.val()]); }); render(); },
+      () => { $("denied").hidden = false; data = []; render(); });
+  });
+
+  $("list").addEventListener("click", e => {
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    db.ref("requests/" + b.dataset.id).update({ status: b.dataset.s, updated: firebase.database.ServerValue.TIMESTAMP })
+      .catch(err => alert("Could not update: " + err.message));
+  });
+}
+
+function render() {
+  const showDone = $("showDone").checked;
+  const rows = data.filter(([, r]) => showDone || r.status !== "resolved").sort((a, b) => (b[1].created || 0) - (a[1].created || 0));
+  $("list").innerHTML = rows.length ? "" : "<p class='mute'>No open requests.</p>";
+  rows.forEach(([id, r]) => {
+    const el = document.createElement("div"); el.className = "card";
+    const map = r.lat != null ? "<a href='https://www.google.com/maps?q=" + r.lat + "," + r.lng + "' target='_blank' rel='noopener'>Open location in Maps</a>" : "Location not shared";
+    el.innerHTML =
+      "<span class='badge t-" + esc(r.type) + "'>" + esc(String(r.type).toUpperCase()) + "</span> " +
+      "<span class='badge s-" + esc(r.status) + "'>" + esc(labels[r.status] || r.status) + "</span>" +
+      "<h3 style='margin:8px 0 2px'>" + esc(r.name || "Unknown") + "</h3>" +
+      "<p class='mute'>" + (r.created ? new Date(r.created).toLocaleString() : "") + "</p>" +
+      (r.message ? "<p>" + esc(r.message) + "</p>" : "") +
+      "<p class='mute'>Phone: " + (r.phone ? "<a href='tel:" + esc(r.phone) + "'>" + esc(r.phone) + "</a>" : "not given") +
+      " · Contact: " + esc(r.contactName || "none") + " " + (r.contactPhone ? "<a href='tel:" + esc(r.contactPhone) + "'>" + esc(r.contactPhone) + "</a>" : "") + "</p>" +
+      "<p class='mute'>Blood group: " + esc(r.bloodGroup || "not set") + (r.mobility ? " · <b>Needs mobility assistance</b>" : "") + "</p>" +
+      (r.conditions ? "<p class='mute'>Medical: " + esc(r.conditions) + "</p>" : "") +
+      "<p class='mute'>" + map + "</p>" +
+      "<div class='row'>" +
+      ["seen", "on_the_way", "resolved"].map(k => "<button class='btn" + (k === "resolved" ? "" : " alt") + "' data-id='" + esc(id) + "' data-s='" + k + "'>" + labels[k] + "</button>").join("") +
+      "</div>";
+    $("list").appendChild(el);
+  });
+}
+</script>
+</body>
+</html>
