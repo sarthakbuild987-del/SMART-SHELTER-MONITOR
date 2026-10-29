@@ -1,0 +1,58 @@
+/* motion.css: animations and interactions only. Loaded by motion.js. */
+@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:none}}
+@keyframes shift{0%,100%{background-position:0 50%}50%{background-position:100% 50%}}
+@keyframes slide{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes flash{0%{box-shadow:0 0 0 0 rgba(26,95,180,.55)}100%{box-shadow:0 0 0 18px rgba(26,95,180,0)}}
+@keyframes beat{0%,100%{box-shadow:0 8px 18px rgba(198,40,40,.35),0 0 0 0 rgba(198,40,40,.45)}60%{box-shadow:0 8px 18px rgba(198,40,40,.35),0 0 0 14px rgba(198,40,40,0)}}
+@keyframes mp{0%,100%{stroke-width:2;stroke-opacity:1}50%{stroke-width:12;stroke-opacity:.35}}
+@keyframes dot{50%{opacity:.25}}
+@keyframes rip{to{transform:scale(1);opacity:0}}
+@keyframes drift{to{transform:translate(-60px,50px) scale(1.15)}}
+
+/* soft moving colour behind the page */
+body::before,body::after{content:"";position:fixed;z-index:-1;border-radius:50%;filter:blur(60px);opacity:.35;pointer-events:none}
+body::before{width:420px;height:420px;background:#7fb2f0;top:-120px;right:-100px;animation:drift 18s ease-in-out infinite alternate}
+body::after{width:360px;height:360px;background:#9be0b5;bottom:-120px;left:-100px;animation:drift 22s ease-in-out infinite alternate-reverse}
+
+/* header colours slowly shift */
+header{background-size:200% 200%;animation:shift 14s ease infinite}
+
+/* page-load entrance (only while body has no "loaded" class, so live updates never replay it) */
+body:not(.loaded) .card,body:not(.loaded) .shelter,body:not(.loaded) .summary div,body:not(.loaded) #nearest{animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
+body:not(.loaded) .summary div:nth-child(2){animation-delay:.08s}
+body:not(.loaded) .summary div:nth-child(3){animation-delay:.16s}
+body:not(.loaded) #grid .shelter:nth-child(1){animation-delay:.10s}
+body:not(.loaded) #grid .shelter:nth-child(2){animation-delay:.18s}
+body:not(.loaded) #grid .shelter:nth-child(3){animation-delay:.26s}
+body:not(.loaded) #grid .shelter:nth-child(4){animation-delay:.34s}
+body:not(.loaded) #grid .shelter:nth-child(5){animation-delay:.42s}
+body:not(.loaded) #grid .shelter:nth-child(6){animation-delay:.50s}
+body:not(.loaded) .bar i{transform-origin:left;animation:grow .9s .3s cubic-bezier(.2,.7,.2,1) both}
+
+/* alerts slide in, tabs fade in */
+.bc,#alert:not([hidden]){animation:slide .4s ease both}
+#app>div[id^=tab-]:not([hidden]){animation:fade .3s ease both}
+
+/* live-update flash on a shelter card when its count changes */
+.shelter.flash{animation:flash 1.1s ease-out}
+
+/* urgency cues */
+.btn.sos{animation:beat 2.4s ease-in-out infinite}
+path[fill="#c62828"].leaflet-interactive{animation:mp 1.6s ease-in-out infinite}
+.shelter.full .badge::before,.badge.fire::before,.badge.s-full::before,.badge.s-new::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;margin-right:6px;animation:dot 1.4s ease-in-out infinite}
+
+/* cursor spotlight on shelter cards */
+.shelter{position:relative}
+.shelter::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .2s;background:radial-gradient(240px circle at var(--mx,50%) var(--my,50%),rgba(26,95,180,.12),transparent 60%)}
+.shelter:hover::after{opacity:1}
+
+/* button ripple */
+.btn,nav button,.demo button{position:relative;overflow:hidden}
+.ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.4);transform:scale(0);animation:rip .6s linear;pointer-events:none}
+.btn.ghost .ripple,nav .ripple{background:rgba(26,95,180,.2)}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
