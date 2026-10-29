@@ -52,7 +52,7 @@
   });
 
   // flash a shelter card when its count changes
-  var grid = document.getElementById("grid"), seen = {};
+  var grid = document.getElementById("grid"), seen = {}, prevPct = {}, prevLab = {};
   if (grid && !calm) {
     new MutationObserver(function () {
       grid.querySelectorAll(".shelter[data-id]").forEach(function (c) {
@@ -63,8 +63,40 @@
           c.classList.add("flash");
           setTimeout(function () { c.classList.remove("flash"); }, 1200);
         }
+        var bar = c.querySelector(".bar i"), badge = c.querySelector(".badge");
+        var pct = bar ? bar.style.width : "", lab = badge ? badge.textContent : "";
+        if (id in seen) {
+          if (bar && prevPct[id] && prevPct[id] !== pct) {   // slide the bar from its old length
+            bar.style.width = prevPct[id];
+            requestAnimationFrame(function () { requestAnimationFrame(function () { bar.style.width = pct; }); });
+          }
+          if (badge && prevLab[id] && prevLab[id] !== lab) badge.classList.add("pop");
+        }
+        prevPct[id] = pct; prevLab[id] = lab;
         seen[id] = v;
       });
     }).observe(grid, { childList: true });
+  }
+
+  // LIVE / OFFLINE indicator from the Firebase connection
+  try {
+    if (window.firebase && firebase.apps && firebase.apps.length) {
+      firebase.database().ref(".info/connected").on("value", function (s) {
+        document.body.dataset.live = s.val() ? "1" : "0";
+      });
+    }
+  } catch (e) {}
+
+  // a new help request drops into the admin list
+  var rl = document.getElementById("list"), known = {}, start = Date.now();
+  if (rl && !calm) {
+    new MutationObserver(function () {
+      rl.querySelectorAll(".card").forEach(function (c) {
+        var b = c.querySelector("button[data-id]");
+        if (!b) return;
+        if (!(b.dataset.id in known) && Date.now() - start > 4000) c.classList.add("arrive");
+        known[b.dataset.id] = 1;
+      });
+    }).observe(rl, { childList: true });
   }
 })();

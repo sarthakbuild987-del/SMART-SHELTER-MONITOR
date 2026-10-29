@@ -53,6 +53,42 @@ path[fill="#c62828"].leaflet-interactive{animation:mp 1.6s ease-in-out infinite}
 .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.4);transform:scale(0);animation:rip .6s linear;pointer-events:none}
 .btn.ghost .ripple,nav .ripple{background:rgba(26,95,180,.2)}
 
+/* ---- more motion: every effect below shows a real state change ---- */
+@keyframes livepulse{50%{opacity:.45}}
+@keyframes shimmer{to{background-position:-200% 0}}
+@keyframes alarm{0%,100%{box-shadow:var(--shadow),0 0 0 0 rgba(198,40,40,.4)}60%{box-shadow:var(--shadow),0 0 0 10px rgba(198,40,40,0)}}
+@keyframes pop{40%{transform:scale(1.18)}}
+@keyframes okpop{from{opacity:0;transform:translateY(4px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes arrive{0%{background:#fff3c4;transform:translateY(-12px);opacity:0}30%{opacity:1;transform:none}100%{background:#fff}}
+
+/* connection indicator in the header */
+body[data-live] header h1::after{display:inline-block;margin-left:10px;padding:3px 10px;border-radius:999px;font-size:.62rem;font-weight:700;letter-spacing:.12em;vertical-align:middle;background:rgba(255,255,255,.14)}
+body[data-live="1"] header h1::after{content:"\25CF  LIVE";color:#7ee2a1;animation:livepulse 2s ease-in-out infinite}
+body[data-live="0"] header h1::after{content:"\25CF  OFFLINE";color:#ff9a9a}
+
+/* loading placeholders while data arrives */
+#grid:empty::before,#grid:empty::after,#list:empty::before,#list:empty::after{content:"";display:block;height:170px;margin-bottom:14px;border-radius:14px;background:linear-gradient(90deg,#dfe6ed 25%,#f2f5f8 50%,#dfe6ed 75%);background-size:200% 100%;animation:shimmer 1.3s linear infinite}
+
+/* critical alerts and the fire or full banner breathe */
+.bc.critical,#alert:not([hidden]){animation:slide .4s ease both,alarm 2s ease-in-out .4s infinite}
+
+/* number and status changes */
+.shelter.flash .count{transform-origin:left center;animation:pop .5s ease}
+.badge.pop{animation:pop .5s ease}
+
+/* the "you are here" dot pulses on the map */
+path[fill="#1a5fb4"].leaflet-interactive{animation:mp 1.8s ease-in-out infinite}
+
+/* smoother tab bar */
+nav button{transition:background .25s,color .25s,border-color .25s,filter .12s,transform .06s}
+
+/* saved confirmation */
+.msg.ok{animation:okpop .4s ease both}
+.msg.ok::before{content:"\2713  ";font-weight:700}
+
+/* a new help request drops into the admin list */
+.card.arrive{animation:arrive 1.6s ease-out both}
+
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
