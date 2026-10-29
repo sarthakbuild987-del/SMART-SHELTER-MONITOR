@@ -1,0 +1,78 @@
+/* theme.css: visual refresh only. Delete the <link> line from a page to get the old look back. */
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap");
+
+:root{
+  --bg:#eaeef3;--ink:#12202c;--mute:#54677a;--card:#fff;--line:#d3dce5;
+  --navy:#0f1b27;--blue:#1a5fb4;
+  --ok:#17803f;--warn:#c77c00;--full:#c62828;
+  --okbg:#e2f4ea;--warnbg:#fdeccb;--fullbg:#fbe0e0;
+  --shadow:0 1px 2px rgba(18,32,44,.06),0 8px 22px rgba(18,32,44,.07);
+  --r:14px;
+}
+body{font-family:"Atkinson Hyperlegible","Segoe UI",system-ui,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+
+/* header */
+header{background:linear-gradient(135deg,#0f1b27 0%,#1b3c5a 100%);position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+header h1{font-size:1.25rem;letter-spacing:.01em}
+@media(max-width:600px){header p{display:none}}
+
+/* cards */
+.card,.shelter,.summary div,#nearest{border-radius:var(--r);box-shadow:var(--shadow);border-color:#e3e9ef}
+#banner,#alert,.bc{border-radius:var(--r)}
+#alert,.bc{border-left:6px solid currentColor;box-shadow:var(--shadow)}
+h2,h3{letter-spacing:-.01em}
+label{font-weight:700;color:var(--ink)}
+.hint{font-weight:700}
+
+/* dashboard summary */
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.summary div{min-width:0;padding:14px 16px;border-top:4px solid var(--blue)}
+.summary div:nth-child(2){border-top-color:var(--warn)}
+.summary div:nth-child(3){border-top-color:var(--ok)}
+.summary b{font-size:2.1rem;font-variant-numeric:tabular-nums}
+
+/* shelter cards */
+#grid{gap:18px}
+.shelter{border-left:6px solid var(--line);transition:transform .15s,box-shadow .15s}
+.shelter.ok{border-left-color:var(--ok)}
+.shelter.warn{border-left-color:var(--warn)}
+.shelter.full{border-left-color:var(--full)}
+.shelter:hover{transform:translateY(-2px)}
+.shelter h2{font-size:1.15rem}
+.count{font-size:3rem;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.bar{height:14px;border-radius:8px}
+.bar i{border-radius:8px}
+.badge{padding:4px 12px;font-size:.88rem}
+.redirect{border-radius:10px;border-left:4px solid var(--full)}
+
+/* map */
+#map{height:340px;border:0;border-radius:var(--r);box-shadow:var(--shadow)}
+@media(min-width:900px){#map{height:440px}}
+
+/* buttons */
+.btn,nav button,.demo button{min-height:44px;border-radius:10px;transition:filter .12s,transform .06s}
+.btn:hover{filter:brightness(1.12)}
+.btn:active{transform:translateY(1px)}
+.btn.alt{background:var(--blue)}
+.btn.sos{border-radius:14px;padding:18px;box-shadow:0 8px 18px rgba(198,40,40,.35)}
+
+/* forms */
+input,select,textarea{min-height:44px;border:1.5px solid var(--line);border-radius:10px;background:#fff}
+textarea{min-height:90px;resize:vertical}
+input[type=checkbox]{min-height:0;width:20px;height:20px;vertical-align:middle}
+input:focus,select:focus,textarea:focus{border-color:var(--blue);outline:3px solid rgba(26,95,180,.25);outline-offset:0}
+
+/* app tab bar */
+nav{left:50%;right:auto;width:100%;max-width:520px;transform:translateX(-50%);border:1px solid #e3e9ef;border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(18,32,44,.12)}
+nav button{font-size:.95rem;border-top:3px solid transparent;border-radius:0}
+nav button.on{background:#eaf2fd;font-weight:700}
+
+@media(max-width:480px){
+  .summary b{font-size:1.7rem}
+  .summary div{padding:12px}
+  .count{font-size:2.6rem}
+}
+@media(prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .shelter:hover{transform:none}
+}
