@@ -17,12 +17,17 @@
              inner sensor then outer sensor = EXIT  (-1)
 */
 
+// Set USE_OLED to 0 if you did not buy the 0.96" OLED display
+#define USE_OLED 1
+
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Wire.h>
+#if USE_OLED
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#endif
 #include <DHT.h>
 #include "secrets.h"   // WIFI_SSID, WIFI_PASS, DB_URL, FIREBASE_API_KEY, DEVICE_EMAIL, DEVICE_PASS
 
@@ -51,7 +56,9 @@ const unsigned long HEARTBEAT_MS      = 30000;
 const unsigned long MIN_UPLOAD_GAP_MS = 1500;
 
 // ---------- Objects ----------
+#if USE_OLED
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
+#endif
 DHT dht(PIN_DHT, DHT22);
 
 // ---------- Shared state ----------
@@ -133,10 +140,13 @@ void runCounter() {
 // The device signs in with its own account. The database rules only let
 // this account write count, temp, humidity, flame and updated.
 bool signIn() {
+  IPAddress warm;
+  WiFi.hostByName("identitytoolkit.googleapis.com", warm);   // look the name up first
   WiFiClientSecure client;
   client.setInsecure();   // fine for a prototype; use a certificate in production
+  client.setTimeout(20);
   HTTPClient http;
-  http.setConnectTimeout(20000);
+  http.setConnectTimeout(20000);   // slow TLS handshake in the simulator
   http.setTimeout(20000);
   String url = String("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=") + FIREBASE_API_KEY;
   if (!http.begin(client, url)) return false;
@@ -145,7 +155,7 @@ bool signIn() {
   int code = http.POST(body);
   String resp = http.getString();
   http.end();
-  if (code != 200) { Serial.printf("Sign-in failed: HTTP %d\n", code); Serial.println(resp); return false; }
+  if (code != 200) { Serial.printf("Sign-in failed: HTTP %d (%s)\n", code, http.errorToString(code).c_str()); Serial.println(resp); return false; }
 
   int k = resp.indexOf("\"idToken\"");
   if (k < 0) return false;
@@ -161,8 +171,8 @@ bool signIn() {
 bool sendToFirebase() {
   // Tokens last 1 hour; sign in again after 45 minutes
   if (idToken.length() == 0 || millis() - tokenAt > 2700000UL) {
-        if (!signIn()) return false;
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    if (!signIn()) return false;
+    vTaskDelay(50 / portTICK_PERIOD_MS);   // let other tasks run between the two handshakes
   }
 
   int c = count;
@@ -179,6 +189,7 @@ bool sendToFirebase() {
 
   WiFiClientSecure client;
   client.setInsecure();
+  client.setTimeout(20);
   HTTPClient http;
   http.setConnectTimeout(20000);
   http.setTimeout(20000);
@@ -216,6 +227,7 @@ void uploadTask(void*) {
 }
 
 // ---------- Display ----------
+#if USE_OLED
 void drawScreen() {
   int c = count;
   oled.clearDisplay();
@@ -246,6 +258,9 @@ void drawScreen() {
   if (!isnan(h)) { oled.print(h, 0); oled.print("%"); }
   oled.display();
 }
+#else
+void drawScreen() {}   // no display fitted
+#endif
 
 // ---------- Setup / loop ----------
 void setup() {
@@ -256,6 +271,7 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
 
+#if USE_OLED
   Wire.begin(21, 22);
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   oled.clearDisplay();
@@ -265,17 +281,17 @@ void setup() {
   oled.println("Shelter monitor");
   oled.println("Connecting WiFi...");
   oled.display();
+#endif
 
   dht.begin();
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.begin(WIFI_SSID, WIFI_PASS, 6);   // channel 6 is for Wokwi only. On a real board use WiFi.begin(WIFI_SSID, WIFI_PASS);
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) delay(250);
-  Serial.println(WiFi.status() == WL_CONNECTED ? "WiFi connected" : "WiFi not connected (will keep trying)");
-  
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 30000) delay(250);
+  Serial.printf("WiFi status=%d ip=%s\n", WiFi.status(), WiFi.localIP().toString().c_str());
 
-
+  // Core 1 (not core 0): TLS handshakes are CPU heavy and would trip the core 0 watchdog
   xTaskCreatePinnedToCore(uploadTask, "upload", 16384, NULL, 1, NULL, 1);
 }
 
