@@ -157,10 +157,9 @@ bool signIn() {
   while (client.connected()) { String line = client.readStringUntil('\n'); if (line == "\r") break; }
   String resp = client.readString();
   client.stop();
-  if (code != 200) { Serial.printf("Sign-in failed: HTTP %d\n", code); Serial.println(resp); return false; }
-
+  // Judge success by the token itself, not the status line
   int k = resp.indexOf("\"idToken\"");
-  if (k < 0) return false;
+  if (k < 0) { Serial.printf("Sign-in failed (status %d)\n", code); Serial.println(resp); return false; }
   int a = resp.indexOf('"', resp.indexOf(':', k) + 1) + 1;
   int b = resp.indexOf('"', a);
   if (a <= 0 || b <= a) return false;
