@@ -140,22 +140,24 @@ void runCounter() {
 // The device signs in with its own account. The database rules only let
 // this account write count, temp, humidity, flame and updated.
 bool signIn() {
-  IPAddress warm;
-  WiFi.hostByName("identitytoolkit.googleapis.com", warm);   // look the name up first
   WiFiClientSecure client;
   client.setInsecure();   // fine for a prototype; use a certificate in production
   client.setTimeout(20);
-  HTTPClient http;
-  http.setConnectTimeout(20000);   // slow TLS handshake in the simulator
-  http.setTimeout(20000);
-  String url = String("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=") + FIREBASE_API_KEY;
-  if (!http.begin(client, url)) return false;
-  http.addHeader("Content-Type", "application/json");
+  if (!client.connect("identitytoolkit.googleapis.com", 443)) {
+    Serial.println("Sign-in: connect failed");
+    return false;
+  }
   String body = String("{\"email\":\"") + DEVICE_EMAIL + "\",\"password\":\"" + DEVICE_PASS + "\",\"returnSecureToken\":true}";
-  int code = http.POST(body);
-  String resp = http.getString();
-  http.end();
-  if (code != 200) { Serial.printf("Sign-in failed: HTTP %d (%s)\n", code, http.errorToString(code).c_str()); Serial.println(resp); return false; }
+  client.print(String("POST /v1/accounts:signInWithPassword?key=") + FIREBASE_API_KEY + " HTTP/1.0\r\n" +
+               "Host: identitytoolkit.googleapis.com\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length: " + body.length() + "\r\n\r\n" + body);
+  String status = client.readStringUntil('\n');
+  int code = status.substring(9, 12).toInt();
+  while (client.connected()) { String line = client.readStringUntil('\n'); if (line == "\r") break; }
+  String resp = client.readString();
+  client.stop();
+  if (code != 200) { Serial.printf("Sign-in failed: HTTP %d\n", code); Serial.println(resp); return false; }
 
   int k = resp.indexOf("\"idToken\"");
   if (k < 0) return false;
@@ -263,6 +265,16 @@ void drawScreen() {}   // no display fitted
 #endif
 
 // ---------- Setup / loop ----------
+// Opens a plain secure connection first, which helps the slow Wokwi network wake up.
+void preconnect(const char* host) {
+  WiFiClientSecure c;
+  c.setInsecure();
+  c.setTimeout(20);
+  bool ok = c.connect(host, 443);
+  Serial.printf("preconnect %s: %s\n", host, ok ? "OK" : "FAILED");
+  c.stop();
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(PIN_IR_OUTER, INPUT_PULLUP);
@@ -290,6 +302,8 @@ void setup() {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 30000) delay(250);
   Serial.printf("WiFi status=%d ip=%s\n", WiFi.status(), WiFi.localIP().toString().c_str());
+  preconnect("smart-shelter-monitor-default-rtdb.asia-southeast1.firebasedatabase.app");
+  preconnect("identitytoolkit.googleapis.com");
 
   // Core 1 (not core 0): TLS handshakes are CPU heavy and would trip the core 0 watchdog
   xTaskCreatePinnedToCore(uploadTask, "upload", 16384, NULL, 1, NULL, 1);
